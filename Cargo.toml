@@ -13,5 +13,6 @@ base64 = "0.21.2"
 rpassword = "^6.0"
 inotify = "0.10.2"
 tokio = "1.33.0"
+clap = { version = "4.4.6", features = ["derive"] }
 #opaque-ke = "2.0"
 #rand = "^0.8.5"
