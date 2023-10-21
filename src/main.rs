@@ -17,7 +17,8 @@ const SALTSIZE: usize = 24;
 const ENCRYPTSUFFIX: &str = "_encrypted";
 const CHUNK_SIZE: usize = 128; // The size of the chunks you wish to split the stream into.
 const MIN_MEM_ARGON: u8 = 5;
-const MAX_MEM_ARGON: u8 = 100;
+const DEFAULT_ARGON: u8 = 16;
+const MAX_MEM_ARGON: u8 = 50;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -28,7 +29,7 @@ struct Args {
     action: Action,
 
     /// Argon parameter (default should be fit, but can be computed with -t), set exponential for argon, must be between 5 (very low - low CPU devices) and 50 (nearly impossible to compute).
-    #[arg(short, long, default_value_t = 15, value_parser = clap::value_parser!(u8).range(i64::from(MIN_MEM_ARGON)..=i64::from(MAX_MEM_ARGON)))]
+    #[arg(short, long, default_value_t = DEFAULT_ARGON, value_parser = clap::value_parser!(u8).range(i64::from(MIN_MEM_ARGON)..=i64::from(MAX_MEM_ARGON)))]
     argon2: u8,
 
     /// File(s)/Directories to encrypt/decrypt
