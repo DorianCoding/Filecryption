@@ -154,18 +154,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
-name = "cryptography"
-version = "0.1.0"
-dependencies = [
- "base64",
- "clap",
- "inotify",
- "orion",
- "rpassword",
- "tokio",
-]
-
-[[package]]
 name = "ct-codecs"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -176,6 +164,18 @@ name = "fiat-crypto"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e825f6987101665dea6ec934c09ec6d721de7bc1bf92248e1d5810c8cd636b77"
+
+[[package]]
+name = "filecryption"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "clap",
+ "inotify",
+ "orion",
+ "rpassword",
+ "tokio",
+]
 
 [[package]]
 name = "futures-core"
