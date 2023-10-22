@@ -1,3 +1,13 @@
+/*
+     This file is part of Filecryption.
+
+    Filecryption is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+    Filecryption is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along with Filecryption. If not, see <https://www.gnu.org/licenses/>.
+*/
+
 use base64::{engine::general_purpose, Engine as _};
 use clap::{Parser, ValueEnum};
 use orion::aead;
@@ -256,17 +266,17 @@ fn main() {
             let mut now = time::Instant::now();
             let user_password = kdf::Password::from_slice(b"This is an attempt").unwrap();
             let salt = kdf::Salt::default();
-            for i in MIN_MEM_ARGON..MAX_MEM_ARGON {
+            for i in MIN_MEM_ARGON..=MAX_MEM_ARGON {
                 let _derived_key = kdf::derive_key(&user_password, &salt, 3, 1 << i, 32).unwrap();
                 //println!("The derived key is {}",general_purpose::STANDARD.encode(derived_key.unprotected_as_bytes()));
                 if now.elapsed().as_millis() > 5000 {
-                    let base: u32 = 10;
+                    let base: u32 = 2;
                     let calc = i - 1;
                     if verbose {
                         println!(
                             "The parameter used should be {} which corresponds to {} MiB",
                             calc,
-                            (1 << calc) / base.pow(3)
+                            (1 << calc) / base.pow(10)
                         );
                     } else {
                         println!("{}", calc);
