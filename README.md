@@ -17,7 +17,8 @@ Arguments:
   [FILE]...  File(s)/Directories to encrypt/decrypt
 
 Options:
-  -a, --argon2 <ARGON2>      Argon parameter (default should be fit, but can be computed with -t), set exponential for argon, must be between 5 (very low - low CPU devices) and 50 (nearly impossible to compute) [default: 15]
+  -a, --argon2 <ARGON2>      Argon parameter (default should be fit, but can be computed with -t), set exponential for argon, must be between 5 (very low - low CPU devices) and 50 (nearly impossible to compute) [default: 16]
+  -f, --filename             Encrypt filename
   -p, --password <PASSWORD>  Password input
   -r, --recursive            Recursive all directories and files
   -v, --verbose              verbose mode
@@ -30,21 +31,22 @@ Options:
 > [!IMPORTANT]
 > Do not try to reencrypt already encrypted files.
 > It is clear that this program performs a real encryption and if you alter, edit encrypted files, the parameters file created or lose your password, it ***will be impossible to decrypt your data***. You should keep a backup on a secure device.
-> Do not attempt to change extension of files, move or delete the parameters file created. However, you can tag it as immuable : `# chattr +i file` (as a root) 
+> Do not attempt to change extension, filenames of files, move or delete the parameters file created. However, you can tag it as immuable : `# chattr +i file` (as a root) 
 
 
 Example :
 * `./script encrypt file.txt` to encrypt file.txt
 * `./script decrypt file.txt` to decrypt file.txt
-* `./script encrypt -rv ~` to encrypt and verbose full home
-* `./script encrypt -rv ~` to decrypt and verbose full home
+* `./script -f decrypt file.txt` to decrypt file.txt and its filename
+* `./script -frv encrypt ~` to encrypt and verbose full home and its filename
+* `./script -frv encrypt ~` to decrypt and verbose full home and its filename
 
 ## Informations
 
 Files inside directories won't be taken into account unless recursive is set. 
 Password would be asked in secure tty but can be unsecurely provide as an argument.
 A hidden file is created containing the salt and derivation parameters for Argon2.
-It should be automatically detected when encrypting and decrypting. **This file is needed to decrypt**.
+It should be automatically detected when encrypting and decrypting. **This file is needed to decrypt and should not be moved or altered**.
 
 ## LICENSE
 This program is under GPL-3 licence. 
@@ -61,7 +63,7 @@ and provide this value as `-a value` when using this script. The default value i
 <details>
   <summary>Table of values for argon parameter and memory cost</summary>
 
-*Keep in mind that values higher than 20 could just make your computer lag before the script crashes
+*Keep in mind that values higher than 20 could just make your computer lag or crashes
 and you **should really** compute before choosing a higher value than default.*
 | Value of argon | Memory cost |
 | --- | --- |

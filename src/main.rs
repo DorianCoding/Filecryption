@@ -10,8 +10,8 @@
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::{Parser, ValueEnum};
-use orion::aead;
 use orion::aead::streaming::*;
+use orion::aead::{self, open, seal};
 use orion::kdf;
 use rpassword;
 use std::ffi::OsStr;
@@ -45,7 +45,9 @@ struct Args {
     /// File(s)/Directories to encrypt/decrypt
     #[arg(value_parser)]
     file: Vec<String>,
-
+    /// Encrypt filename
+    #[arg(short, long)]
+    filename: bool,
     /// Password input
     #[arg(short, long)]
     password: Option<String>,
@@ -112,7 +114,7 @@ fn extractmasterkey(
                     );
                     exit(1);
                 }
-                let mut file=file.unwrap();
+                let mut file = file.unwrap();
                 file.write(text.as_bytes()).expect("Cannot write params");
             }
         }
@@ -234,18 +236,19 @@ fn getfiles(filepaths: Vec<String>, verbose: bool, recursive: bool) -> (Vec<Path
 fn main() {
     let args = Args::parse();
     let verbose = args.verbose;
+    let filenameencrypt = args.filename;
     match args.action {
         Action::Encrypt => {
             let (files, fileparam) = getfiles(args.file, args.verbose, args.recursive);
             let secret_key =
                 extractmasterkey(true, Path::new(&fileparam), args.argon2, args.password);
-            encryptastream(&secret_key, files, verbose);
+            encryptastream(&secret_key, files, verbose, filenameencrypt);
         }
         Action::Decrypt => {
             let (files, fileparam) = getfiles(args.file, args.verbose, args.recursive);
             let secret_key =
                 extractmasterkey(false, Path::new(&fileparam), args.argon2, args.password);
-            let result = decryptastream(&secret_key, files, verbose);
+            let result = decryptastream(&secret_key, files, verbose, filenameencrypt);
             if result {
                 match fs::remove_file(&fileparam) {
                     Ok(_) => {}
@@ -289,7 +292,12 @@ fn main() {
         }
     }
 }
-pub fn encryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose: bool) {
+pub fn encryptastream(
+    secret_key: &aead::SecretKey,
+    files: Vec<PathBuf>,
+    verbose: bool,
+    filenameencrypt: bool,
+) {
     for file in files {
         let filedata: String = match file.to_str() {
             Some(x) => String::from(x),
@@ -300,7 +308,7 @@ pub fn encryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
         };
         if filedata.ends_with(ENCRYPTSUFFIX) {
             if verbose {
-                println!("The file {} is already encrypted",filedata);
+                println!("The file {} is already encrypted", filedata);
             }
             continue;
         }
@@ -315,13 +323,18 @@ pub fn encryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
             return;
         }
         let data = data.unwrap(); //Cannot be wrong
-        let mut filename = filedata.clone();
-        filename.push_str(ENCRYPTSUFFIX);
+        let filename = filedata.clone();
+        let mut newfilename = filename.clone();
+        if filenameencrypt {
+            newfilename =
+                general_purpose::URL_SAFE.encode(seal(&secret_key, &filename.as_bytes()).unwrap());
+        }
+        newfilename.push_str(ENCRYPTSUFFIX);
         let mut file = OpenOptions::new()
             .write(true)
             .append(true)
             .create_new(true)
-            .open(filename)
+            .open(newfilename)
             .unwrap();
         /* println!(
             "The nonce is set! {}",
@@ -368,7 +381,12 @@ pub fn encryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
         }
     }
 }
-pub fn decryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose: bool) -> bool {
+pub fn decryptastream(
+    secret_key: &aead::SecretKey,
+    files: Vec<PathBuf>,
+    verbose: bool,
+    filenamencrypt: bool,
+) -> bool {
     let mut count: usize = 0;
     let size = files.len();
     for file in files {
@@ -381,7 +399,7 @@ pub fn decryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
         };
         if !filedata.ends_with(ENCRYPTSUFFIX) {
             if verbose {
-                println!("The file {} is not encrypted.",file.display())
+                println!("The file {} is not encrypted.", file.display())
             }
             continue;
         }
@@ -411,11 +429,28 @@ pub fn decryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
         let out: Vec<Vec<u8>> = Vec::with_capacity(data.len() / decipher_chunk);
         let mut filename = filedata.clone();
         filename = String::from(filename.as_str().trim_end_matches(ENCRYPTSUFFIX)); //Remove last _encrypted
+        let mut newfilename = filename.clone();
+        if filenamencrypt {
+            //let newfilename = general_purpose::URL_SAFE.encode(seal(&secret_key,filename.as_bytes()).unwrap());
+            let binaryfilename = open(
+                &secret_key,
+                &general_purpose::URL_SAFE.decode(&filename).unwrap(),
+            );
+            if binaryfilename.is_err() {
+                eprintln!(
+                    "The error is {} for the file {:?}",
+                    binaryfilename.unwrap_err(),
+                    &filename
+                );
+                continue;
+            }
+            newfilename = String::from_utf8(binaryfilename.unwrap()).unwrap();
+        }
         let file = OpenOptions::new()
             .write(true)
             .append(true)
             .create_new(true)
-            .open(&filename);
+            .open(&newfilename);
         if file.is_err() {
             eprintln!(
                 "The error is {} for the file {:?}",
@@ -477,12 +512,12 @@ pub fn decryptastream(secret_key: &aead::SecretKey, files: Vec<PathBuf>, verbose
         }
         if verbose {
             println!("The file {} has been decrypted successfully.", &filedata);
-            count+=1;
         }
+        count += 1;
     }
-    if count==0 {
+    if count == 0 {
         eprintln!("Cannot decrypt any files!");
         exit(1);
     }
-    return count==size
+    return count == size;
 }
