@@ -5,7 +5,8 @@
 # Filecryption
 Allows encryption and decryption of files using Argon2i and XChaCha20Poly1305 in Rust.
 ## Usage
-* Download binaries (in bin folder) or clone the repo and run `cargo run`. **Rust needs to be installed** (version >= 1.73). If you have a older version, you can try to run it using `cargo run --ignore-rust-version` but it is not guaranteed to work.
+* Clone the repo, and download the binary for your architecture or run `binary.sh` or `cargo run`. **Rust needs to be installed** (version >= 1.73). If you have a older version, you can try to run it using `cargo run --ignore-rust-version` but it is not guaranteed to work.
+* The script works only from the command line.
 * Enjoy :+1:
 ```
 Allows encryption and decryption of files using Argon2 and XChaCha20Poly1305
