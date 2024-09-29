@@ -13,7 +13,6 @@ use clap::{Parser, ValueEnum};
 use orion::aead::streaming::*;
 use orion::aead::{self, open, seal};
 use orion::kdf;
-use rpassword;
 use std::ffi::OsStr;
 use std::fs::{self, read_dir, File, OpenOptions};
 use std::io::{Read, Write};
@@ -26,7 +25,7 @@ use std::time::{self, Duration};
 const FILEPARAM: &str = ".parameters.txt";
 const SALTSIZE: usize = 24;
 const ENCRYPTSUFFIX: &str = "_encrypted";
-const CHUNK_SIZE: usize = 128; // The size of the chunks you wish to split the stream into.
+const CHUNK_SIZE: usize = 1000; // The size of the chunks you wish to split the stream into.
 const MIN_MEM_ARGON: u8 = 5;
 const DEFAULT_ARGON: u8 = 16;
 const MAX_MEM_ARGON: u8 = 50;
@@ -91,7 +90,7 @@ fn extractmasterkey(
                 panic!("Error on reading parameters");
             }
             calc = buffer[0].trim().parse().expect("Invalid parameters format.");
-            if calc < MIN_MEM_ARGON || calc > MAX_MEM_ARGON {
+            if !(MIN_MEM_ARGON..=MAX_MEM_ARGON).contains(&calc) {
                 panic!("Invalid identifier");
             }
             salt =
@@ -120,14 +119,14 @@ fn extractmasterkey(
                     exit(1);
                 }
                 let mut file = file.unwrap();
-                file.write(text.as_bytes()).expect("Cannot write params");
+                file.write_all(text.as_bytes()).expect("Cannot write params");
             }
         }
     };
     let mut passwordorion: orion::pwhash::Password;
     match password {
         Some(password) => {
-            passwordorion = kdf::Password::from_slice(&password.as_bytes()).expect("Cannot derive password");
+            passwordorion = kdf::Password::from_slice(password.as_bytes()).expect("Cannot derive password");
         }
         None => {
             let mut password2;
@@ -142,11 +141,11 @@ fn extractmasterkey(
                     println!("{}",decryptpass);
                 }
                 let password = rpassword::read_password().unwrap();
-                passwordorion = kdf::Password::from_slice(&password.as_bytes()).unwrap();
+                passwordorion = kdf::Password::from_slice(password.as_bytes()).unwrap();
                 if encrypt {
                     println!("{}",encryptpass2);
                     password2 = rpassword::read_password().unwrap();
-                    password2orion = kdf::Password::from_slice(&password2.as_bytes()).unwrap();
+                    password2orion = kdf::Password::from_slice(password2.as_bytes()).unwrap();
                     if password2orion == passwordorion {
                         //Constant-time
                         break;
@@ -209,7 +208,7 @@ fn getfiles(filepaths: Vec<String>, verbose: bool, recursive: bool) -> (Vec<Path
                 }
             }
             if path.is_dir() && recursive {
-                let dirs = &mut recurse_files(&file);
+                let dirs = &mut recurse_files(file);
                 match dirs {
                     Ok(dir) => {
                         files.append(dir);
@@ -230,7 +229,7 @@ fn getfiles(filepaths: Vec<String>, verbose: bool, recursive: bool) -> (Vec<Path
             }
         }
     }
-    if files.len() == 0 {
+    if files.is_empty() {
         eprintln!("No files were found!");
         exit(1);
     }
@@ -244,66 +243,7 @@ fn getfiles(filepaths: Vec<String>, verbose: bool, recursive: bool) -> (Vec<Path
         }
         Err(_) => String::from(FILEPARAM),
     };
-    return (files, params);
-}
-fn main() {
-    let args = Args::parse();
-    let verbose = args.verbose;
-    let filenameencrypt = args.filename;
-    match args.action {
-        Action::Encrypt => {
-            let (files, fileparam) = getfiles(args.file.clone(), args.verbose, args.recursive);
-            let secret_key =
-                extractmasterkey(true, Path::new(&fileparam), args.argon2, &args.password);
-            encryptastream(&secret_key, files, verbose, filenameencrypt);
-        }
-        Action::Decrypt => {
-            let (files, fileparam) = getfiles(args.file.clone(), args.verbose, args.recursive);
-            let secret_key =
-                extractmasterkey(false, Path::new(&fileparam), args.argon2, &args.password);
-            let result = decryptastream(&secret_key, files, verbose, filenameencrypt);
-            if result {
-                match fs::remove_file(&fileparam) {
-                    Ok(_) => {}
-                    Err(_) => {
-                        eprintln!("Cannot delete parameters");
-                    }
-                }
-            } else {
-                eprintln!("All files could not be decrypted!");
-            }
-        }
-        Action::Compute => {
-            if verbose {
-                println!(
-                    "Getting parameter to derive the master key, please wait several seconds."
-                );
-            }
-            let mut now = time::Instant::now();
-            let user_password = kdf::Password::from_slice(b"This is an attempt").unwrap();
-            let salt = kdf::Salt::default();
-            for i in MIN_MEM_ARGON..=MAX_MEM_ARGON {
-                let _derived_key = kdf::derive_key(&user_password, &salt, 3, 1 << i, 32).unwrap();
-                //println!("The derived key is {}",general_purpose::STANDARD.encode(derived_key.unprotected_as_bytes()));
-                if now.elapsed().as_millis() > 5000 {
-                    let base: u32 = 2;
-                    let calc = i - 1;
-                    if verbose {
-                        println!(
-                            "The parameter used should be {} which corresponds to {} MiB",
-                            calc,
-                            (1 << calc) / base.pow(10)
-                        );
-                    } else {
-                        println!("{}", calc);
-                    }
-                    break;
-                } else {
-                    now = time::Instant::now();
-                }
-            }
-        }
-    }
+    (files, params)
 }
 fn getparent(path: &Path) -> (String, String) {
     let newfilename = Path::new(path);
@@ -331,7 +271,7 @@ pub fn encryptastream(
             }
             continue;
         }
-        let (mut sealer, nonce) = StreamSealer::new(&secret_key).unwrap();
+        let (mut sealer, nonce) = StreamSealer::new(secret_key).unwrap();
         let data = fs::read(&filedata);
         if data.is_err() {
             eprintln!(
@@ -341,7 +281,7 @@ pub fn encryptastream(
             );
             return;
         }
-        let data = data.unwrap(); //Cannot be wrong
+        let mut data = data.unwrap(); //Cannot be wrong
         let filename = filedata.clone();
         let (pathname, filenameplain) = getparent(Path::new(&filename));
         let pathname = Path::new(&pathname);
@@ -349,14 +289,13 @@ pub fn encryptastream(
         let mut newfilename = Path::new(&filename);
         if filenameencrypt {
             elemfilename =
-                pathname.join(general_purpose::URL_SAFE.encode(seal(&secret_key, &filenameplain.as_bytes()).expect("Cannot encrypt filename")));
+                pathname.join(general_purpose::URL_SAFE.encode(seal(secret_key, filenameplain.as_bytes()).expect("Cannot encrypt filename")));
             newfilename = &elemfilename;
         }
         let mut newfilename = String::from(newfilename.to_str().unwrap());
         newfilename.push_str(ENCRYPTSUFFIX);
         let mut file = OpenOptions::new()
-            .write(true)
-            .append(true)
+            .append(false)
             .create_new(true)
             .open(newfilename)
             .unwrap();
@@ -379,8 +318,9 @@ pub fn encryptastream(
                     sealer.seal_chunk(src_chunk, &StreamTag::Message).unwrap()
                 };
             // Save the encrypted chunk somewhere
-            file.write(&encrypted_chunk).expect("Invalid writing.");
+            file.write_all(&encrypted_chunk).expect("Invalid writing.");
         }
+        data.zeroize();
         let blank: String = String::new();
         let write = fs::write(&filedata, &blank); //Empty a file
         if write.is_err() {
@@ -449,7 +389,7 @@ pub fn decryptastream(
             "The nonce is set! {}",
             general_purpose::STANDARD.encode(&nonce)
         ); */
-        let mut opener = StreamOpener::new(&secret_key, &nonce).unwrap();
+        let mut opener = StreamOpener::new(secret_key, &nonce).unwrap();
         let out: Vec<Vec<u8>> = Vec::with_capacity(data.len() / decipher_chunk);
         let mut filename = filedata.clone();
         filename = String::from(filename.as_str().trim_end_matches(ENCRYPTSUFFIX)); //Remove last _encrypted
@@ -465,8 +405,8 @@ pub fn decryptastream(
         if filenamencrypt {
             //let newfilename = general_purpose::URL_SAFE.encode(seal(&secret_key,filename.as_bytes()).unwrap());
             let binaryfilename = open(
-                &secret_key,
-                &general_purpose::URL_SAFE.decode(&filenameplain.as_bytes()).expect("Cannot decrypt filename"),
+                secret_key,
+                &general_purpose::URL_SAFE.decode(filenameplain.as_bytes()).expect("Cannot decrypt filename"),
             );
             if binaryfilename.is_err() {
                 eprintln!(
@@ -480,10 +420,9 @@ pub fn decryptastream(
             newfilename = &path;
         }
         let file = OpenOptions::new()
-            .write(true)
-            .append(true)
+            .append(false)
             .create_new(true)
-            .open(&newfilename);
+            .open(newfilename);
         if file.is_err() {
             eprintln!(
                 "The error is {} for the file {:?}",
@@ -513,7 +452,7 @@ pub fn decryptastream(
                 assert_eq!(tag, StreamTag::Finish, "Stream has been truncated!");
             }
             // Save the encrypted chunk somewhere
-            file.write(&decrypted_chunk).expect("Invalid writing");
+            file.write_all(&decrypted_chunk).expect("Invalid writing");
         }
         if error {
             //error
@@ -552,5 +491,64 @@ pub fn decryptastream(
         eprintln!("Cannot decrypt any files!");
         exit(1);
     }
-    return count == size;
+    count == size
+}
+fn main() {
+    let args = Args::parse();
+    let verbose = args.verbose;
+    let filenameencrypt = args.filename;
+    match args.action {
+        Action::Encrypt => {
+            let (files, fileparam) = getfiles(args.file.clone(), args.verbose, args.recursive);
+            let secret_key =
+                extractmasterkey(true, Path::new(&fileparam), args.argon2, &args.password);
+            encryptastream(&secret_key, files, verbose, filenameencrypt);
+        }
+        Action::Decrypt => {
+            let (files, fileparam) = getfiles(args.file.clone(), args.verbose, args.recursive);
+            let secret_key =
+                extractmasterkey(false, Path::new(&fileparam), args.argon2, &args.password);
+            let result = decryptastream(&secret_key, files, verbose, filenameencrypt);
+            if result {
+                match fs::remove_file(&fileparam) {
+                    Ok(_) => {}
+                    Err(_) => {
+                        eprintln!("Cannot delete parameters");
+                    }
+                }
+            } else {
+                eprintln!("All files could not be decrypted!");
+            }
+        }
+        Action::Compute => {
+            if verbose {
+                println!(
+                    "Getting parameter to derive the master key, please wait several seconds."
+                );
+            }
+            let mut now = time::Instant::now();
+            let user_password = kdf::Password::from_slice(b"This is an attempt").unwrap();
+            let salt = kdf::Salt::default();
+            for i in MIN_MEM_ARGON..=MAX_MEM_ARGON {
+                let _derived_key = kdf::derive_key(&user_password, &salt, 3, 1 << i, 32).unwrap();
+                //println!("The derived key is {}",general_purpose::STANDARD.encode(derived_key.unprotected_as_bytes()));
+                if now.elapsed().as_millis() > 5000 {
+                    let base: u32 = 2;
+                    let calc = i - 1;
+                    if verbose {
+                        println!(
+                            "The parameter used should be {} which corresponds to {} MiB",
+                            calc,
+                            (1 << calc) / base.pow(10)
+                        );
+                    } else {
+                        println!("{}", calc);
+                    }
+                    break;
+                } else {
+                    now = time::Instant::now();
+                }
+            }
+        }
+    }
 }
